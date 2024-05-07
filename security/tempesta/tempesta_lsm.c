@@ -104,11 +104,16 @@ static struct security_hook_list tempesta_hooks[] __read_mostly = {
 	LSM_HOOK_INIT(socket_sock_rcv_skb, tempesta_sock_tcp_rcv),
 };
 
+static const struct lsm_id tempesta_lsmid = {
+	.name = "tempesta",
+	.id = LSM_ID_BPF,
+};
+
 static __init int
 tempesta_init(void)
 {
 	security_add_hooks(tempesta_hooks, ARRAY_SIZE(tempesta_hooks),
-			   "tempesta");
+			   &tempesta_lsmid);
 
 	return 0;
 }

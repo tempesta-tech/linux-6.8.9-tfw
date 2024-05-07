@@ -28,7 +28,6 @@
  *	or via disabling bottom half handlers, etc).
  */
 
-#ifndef CONFIG_SECURITY_TEMPESTA
 /*
  *	The functions in this file will not compile correctly with gcc 2.4.x
  */
@@ -543,6 +542,7 @@ struct sk_buff *napi_build_skb(void *data, unsigned int frag_size)
 }
 EXPORT_SYMBOL(napi_build_skb);
 
+#ifndef CONFIG_SECURITY_TEMPESTA
 /*
  * kmalloc_reserve is a wrapper around kmalloc_node_track_caller that tells
  * the caller if emergency pfmemalloc reserves are being used. If it is and
@@ -823,7 +823,7 @@ __alloc_skb_init(struct sk_buff *skb, u8 *data, unsigned int size,
  *
  */
 
-+#ifndef CONFIG_SECURITY_TEMPESTA
+#ifndef CONFIG_SECURITY_TEMPESTA
 /**
  *	__alloc_skb	-	allocate a network buffer
  *	@size: size to allocate
@@ -1332,7 +1332,7 @@ static void kfree_skbmem(struct sk_buff *skb)
 			put_page(virt_to_page(skb));
 		else
 #endif
-			kmem_cache_free(skbuff_head_cache, skb);
+			kmem_cache_free(skbuff_cache, skb);
 		return;
 
 	case SKB_FCLONE_ORIG:

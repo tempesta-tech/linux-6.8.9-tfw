@@ -684,7 +684,7 @@ void tcp_skb_entail(struct sock *sk, struct sk_buff *skb)
 
 	tcp_slow_start_after_idle_check(sk);
 }
-EXPORT_SYMBOL(skb_entail);
+EXPORT_SYMBOL(tcp_skb_entail);
 
 static inline void tcp_mark_urg(struct tcp_sock *tp, int flags)
 {
@@ -904,7 +904,7 @@ struct sk_buff *tcp_stream_alloc_skb(struct sock *sk, gfp_t gfp,
 	}
 	return NULL;
 }
-EXPORT_SYMBOL(sk_stream_alloc_skb);
+EXPORT_SYMBOL(tcp_stream_alloc_skb);
 
 static unsigned int tcp_xmit_size_goal(struct sock *sk, u32 mss_now,
 				       int large_allowed)
