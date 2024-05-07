@@ -112,6 +112,8 @@
 
 #include <kunit/test.h>
 
+#include <linux/tempesta.h>
+
 static int kernel_init(void *);
 
 /*
