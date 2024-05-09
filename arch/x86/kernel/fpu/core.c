@@ -27,6 +27,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <asm/trace/fpu.h>
+#undef CONFIG_SECURITY_TEMPESTA
 
 #ifdef CONFIG_X86_64
 DEFINE_STATIC_KEY_FALSE(__fpu_state_size_dynamic);

@@ -33,6 +33,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
+#undef CONFIG_SECURITY_TEMPESTA
 
 /*
    - No shared variables, all the data are CPU local.

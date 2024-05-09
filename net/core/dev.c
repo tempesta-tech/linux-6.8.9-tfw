@@ -5156,6 +5156,8 @@ static __latent_entropy void net_tx_action(struct softirq_action *h)
 {
 	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
 
+	kernel_fpu_begin();
+
 	if (sd->completion_queue) {
 		struct sk_buff *clist;
 
@@ -5247,6 +5249,8 @@ static __latent_entropy void net_tx_action(struct softirq_action *h)
 	}
 
 	xfrm_dev_backlog(sd);
+
+	kernel_fpu_end();
 }
 
 #if IS_ENABLED(CONFIG_BRIDGE) && IS_ENABLED(CONFIG_ATM_LANE)
@@ -6795,6 +6799,8 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 	LIST_HEAD(repoll);
 
 start:
+	kernel_fpu_begin();
+
 	sd->in_net_rx_action = true;
 	local_irq_disable();
 	list_splice_init(&sd->poll_list, &list);
@@ -6846,7 +6852,8 @@ start:
 		sd->in_net_rx_action = false;
 
 	net_rps_action_and_irq_enable(sd);
-end:;
+end:
+    kernel_fpu_end();
 }
 
 struct netdev_adjacent {
