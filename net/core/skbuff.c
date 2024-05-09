@@ -87,6 +87,7 @@
 
 #include "dev.h"
 #include "sock_destructor.h"
+#undef CONFIG_SECURITY_TEMPESTA
 
 struct kmem_cache *skbuff_cache __ro_after_init;
 #ifndef CONFIG_SECURITY_TEMPESTA
