@@ -770,7 +770,6 @@ assign_tail_chunks:
 #undef PREEMPT_CTX_ENABLE
 }
 EXPORT_SYMBOL(pg_skb_alloc);
-#endif
 
 static void
 __alloc_skb_init(struct sk_buff *skb, u8 *data, unsigned int size,
@@ -815,7 +814,7 @@ __alloc_skb_init(struct sk_buff *skb, u8 *data, unsigned int size,
 #endif
 	}
 }
-
+#endif
 
 /* 	Allocate a new skbuff. We do this ourselves so we can fill in a few
  *	'private' fields and also do memory statistics to find all the
