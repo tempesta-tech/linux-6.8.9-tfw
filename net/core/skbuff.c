@@ -599,7 +599,8 @@ out:
 
 	return obj;
 }
-#else
+#endif
+
 /*
  * Chunks of size 128B, 256B, 512B, 1KB and 2KB.
  * Typical sk_buff requires ~272B or ~552B (for fclone),
@@ -772,6 +773,7 @@ assign_tail_chunks:
 }
 EXPORT_SYMBOL(pg_skb_alloc);
 
+#ifdef CONFIG_SECURITY_TEMPESTA
 static void
 __alloc_skb_init(struct sk_buff *skb, u8 *data, unsigned int size,
 		 int flags, bool pfmemalloc)
@@ -809,10 +811,8 @@ __alloc_skb_init(struct sk_buff *skb, u8 *data, unsigned int size,
 		refcount_set(&fclones->fclone_ref, 1);
 
 		fclones->skb2.fclone = SKB_FCLONE_CLONE;
-#ifdef CONFIG_SECURITY_TEMPESTA
 		fclones->skb2.skb_page = 1;
 		fclones->skb2.head_frag = 1;
-#endif
 	}
 }
 #endif
