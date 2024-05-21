@@ -904,25 +904,6 @@ nodata:
 	return NULL;
 }
 #else
-
-/*
- * Skb can be allocated and freed on different CPUs,
- * so the counter can be negative.
- */
-static DEFINE_PER_CPU(long, __skb_cnt) ____cacheline_aligned = 0;
-
-long
-__get_skb_count(void)
-{
-	int cpu;
-	long count = 0;
-
-	for_each_online_cpu(cpu)
-		count += *per_cpu_ptr(&__skb_cnt, cpu);
-
-	return count;
-}
-EXPORT_SYMBOL(__get_skb_count);
 /**
  * Tempesta: allocate skb on the same page with data to improve space locality
  * and make head data fragmentation easier.
@@ -954,8 +935,6 @@ __alloc_skb(unsigned int size, gfp_t gfp_mask, int flags, int node)
 	__alloc_skb_init(skb, data, size, flags, page_is_pfmemalloc(pg));
 	skb->head_frag = 1;
 	skb->skb_page = 1;
-
-	++*this_cpu_ptr(&__skb_cnt);
 
 	return skb;
 }
@@ -1357,7 +1336,7 @@ fastpath:
 	BUG_ON(!skb->skb_page);
 	put_page(virt_to_page(skb));
 #else
- 	kmem_cache_free(skbuff_fclone_cache, fclones);
+		kmem_cache_free(skbuff_fclone_cache, fclones);
 #endif
 }
 
@@ -1665,6 +1644,11 @@ void napi_skb_free_stolen_head(struct sk_buff *skb)
 		skb_orphan(skb);
 		skb->slow_gro = 0;
 	}
+#ifdef CONFIG_SECURITY_TEMPESTA
+	if (skb->skb_page)
+		put_page(virt_to_page(skb));
+	else
+#endif
 	napi_skb_cache_put(skb);
 }
 
@@ -2480,7 +2464,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	skb->head_frag = 1;
 	skb->tail_lock = 0;
 #else
- 	skb->head_frag = 0;
+		skb->head_frag = 0;
 #endif
 	skb->data    += off;
 
@@ -2722,7 +2706,7 @@ int __skb_pad(struct sk_buff *skb, int pad, bool free_on_error)
 #ifdef CONFIG_SECURITY_TEMPESTA
 	ntail = skb->data_len + pad - skb_tailroom_locked(skb);
 #else
- 	ntail = skb->data_len + pad - (skb->end - skb->tail);
+		ntail = skb->data_len + pad - (skb->end - skb->tail);
 #endif
 	if (likely(skb_cloned(skb) || ntail > 0)) {
 		err = pskb_expand_head(skb, 0, ntail, GFP_ATOMIC);
@@ -4783,10 +4767,6 @@ struct sk_buff *skb_segment_list(struct sk_buff *skb,
 
 	skb_get(skb);
 
-#ifdef CONFIG_SECURITY_TEMPESTA
-	++*this_cpu_ptr(&__skb_cnt);
-#endif
-
 	return skb;
 
 err_linearize:
@@ -6841,7 +6821,7 @@ static int pskb_carve_inside_header(struct sk_buff *skb, const u32 off,
 #ifdef CONFIG_SECURITY_TEMPESTA
 	skb->head_frag = 1;
 #else
- 	skb->head_frag = 0;
+	skb->head_frag = 0;
 #endif
 	skb_set_end_offset(skb, size);
 	skb_set_tail_pointer(skb, skb_headlen(skb));

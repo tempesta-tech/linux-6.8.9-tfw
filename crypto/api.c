@@ -518,7 +518,6 @@ void *crypto_create_tfm_node(struct crypto_alg *alg,
 #else
 	mem = crypto_alloc_tfmmem(alg, frontend, node, GFP_KERNEL);
 #endif
-	mem = crypto_alloc_tfmmem(alg, frontend, node, GFP_KERNEL);
 	if (IS_ERR(mem))
 		goto out;
 
