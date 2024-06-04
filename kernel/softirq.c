@@ -33,7 +33,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
-#undef CONFIG_SECURITY_TEMPESTA
 
 /*
    - No shared variables, all the data are CPU local.
@@ -531,10 +530,6 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	softirq_handle_begin();
 	in_hardirq = lockdep_softirq_start();
 	account_softirq_enter(current);
-
-#ifdef CONFIG_SECURITY_TEMPESTA
-	__kernel_fpu_begin_mask(KFPU_MXCSR);
-#endif
 
 restart:
 	/* Reset the pending bitmask before enabling irqs */

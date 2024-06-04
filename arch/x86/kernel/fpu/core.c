@@ -27,7 +27,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <asm/trace/fpu.h>
-#undef CONFIG_SECURITY_TEMPESTA
 
 #ifdef CONFIG_X86_64
 DEFINE_STATIC_KEY_FALSE(__fpu_state_size_dynamic);
@@ -449,7 +448,7 @@ void kernel_fpu_begin_mask(unsigned int kfpu_mask)
 {
 #ifdef CONFIG_SECURITY_TEMPESTA
 	/* SoftIRQ in the Tempesta kernel always enables FPU. */
-	if (likely(in_serving_softirq()))
+	if (in_serving_softirq() && this_cpu_read(in_kernel_fpu))
 		return;
 
 	/*
@@ -457,9 +456,11 @@ void kernel_fpu_begin_mask(unsigned int kfpu_mask)
 	 * preciseely that softirq uses FPU, so we have to disable softirq as
 	 * well as task preemption.
 	 */
-	local_bh_disable();
+	if (!in_serving_softirq())
+		local_bh_disable();
 #endif
-	preempt_disable();
+	if (!in_serving_softirq())
+		preempt_disable();
 
 	__kernel_fpu_begin_mask(kfpu_mask);
 }
