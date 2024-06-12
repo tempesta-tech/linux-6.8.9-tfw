@@ -422,8 +422,26 @@ int fpu_copy_uabi_to_guest_fpstate(struct fpu_guest *gfpu, const void *buf,
 EXPORT_SYMBOL_GPL(fpu_copy_uabi_to_guest_fpstate);
 #endif /* CONFIG_KVM */
 
-void __kernel_fpu_begin_mask(unsigned int kfpu_mask)
+void kernel_fpu_begin_mask(unsigned int kfpu_mask)
 {
+#ifdef CONFIG_SECURITY_TEMPESTA
+	/* SoftIRQ in the Tempesta kernel always enables FPU. */
+	if (in_serving_softirq() && this_cpu_read(in_kernel_fpu))
+		return;
+
+	/*
+	 * We don't know in which context the function is called, but we know
+	 * preciseely that softirq uses FPU, so we have to disable softirq as
+	 * well as task preemption.
+	 */
+	if (!in_serving_softirq()) {
+		local_bh_disable();
+		preempt_disable();
+	}
+#else
+	preempt_disable();
+#endif
+
 	WARN_ON_FPU(!irq_fpu_usable());
 	WARN_ON_FPU(this_cpu_read(in_kernel_fpu));
 
@@ -443,35 +461,14 @@ void __kernel_fpu_begin_mask(unsigned int kfpu_mask)
 	if (unlikely(kfpu_mask & KFPU_387) && boot_cpu_has(X86_FEATURE_FPU))
 		asm volatile ("fninit");
 }
-
-void kernel_fpu_begin_mask(unsigned int kfpu_mask)
-{
-#ifdef CONFIG_SECURITY_TEMPESTA
-	/* SoftIRQ in the Tempesta kernel always enables FPU. */
-	if (in_serving_softirq() && this_cpu_read(in_kernel_fpu))
-		return;
-
-	/*
-	 * We don't know in which context the function is called, but we know
-	 * preciseely that softirq uses FPU, so we have to disable softirq as
-	 * well as task preemption.
-	 */
-	if (!in_serving_softirq())
-		local_bh_disable();
-#endif
-	if (!in_serving_softirq())
-		preempt_disable();
-
-	__kernel_fpu_begin_mask(kfpu_mask);
-}
 EXPORT_SYMBOL_GPL(kernel_fpu_begin_mask);
 
+#ifdef CONFIG_SECURITY_TEMPESTA
 void __kernel_fpu_end_bh(void)
 {
-	WARN_ON_FPU(!this_cpu_read(in_kernel_fpu));
-
 	this_cpu_write(in_kernel_fpu, false);
 }
+#endif
 
 void kernel_fpu_end(void)
 {
@@ -479,7 +476,9 @@ void kernel_fpu_end(void)
 	if (likely(in_serving_softirq()))
 		return;
 #endif
-	__kernel_fpu_end_bh();
+	WARN_ON_FPU(!this_cpu_read(in_kernel_fpu));
+
+	this_cpu_write(in_kernel_fpu, false);
 
 	preempt_enable();
 #ifdef CONFIG_SECURITY_TEMPESTA
