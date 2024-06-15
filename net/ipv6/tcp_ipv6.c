@@ -564,8 +564,12 @@ static int tcp_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 
 		rcu_read_lock();
 		opt = ireq->ipv6_opt;
-		//if (!opt)
-		//	opt = rcu_dereference(np->opt);
+#ifdef CONFIG_SECURITY_TEMPESTA
+		if (!sock_flag(sk, SOCK_TEMPESTA) && !opt)
+#else
+		if (!opt)
+#endif
+			opt = rcu_dereference(np->opt);
 		err = ip6_xmit(sk, skb, fl6, skb->mark ? : READ_ONCE(sk->sk_mark),
 			       opt, tclass, READ_ONCE(sk->sk_priority));
 		rcu_read_unlock();
@@ -1489,8 +1493,12 @@ static struct sock *tcp_v6_syn_recv_sock(const struct sock *sk, struct sk_buff *
 	   to newsk.
 	 */
 	opt = ireq->ipv6_opt;
-	//if (!opt)
-	//	opt = rcu_dereference(np->opt);
+#ifdef CONFIG_SECURITY_TEMPESTA
+	if (!sock_flag(sk, SOCK_TEMPESTA) && !opt)
+#else
+	if (!opt)
+#endif
+		opt = rcu_dereference(np->opt);
 	if (opt) {
 		opt = ipv6_dup_options(newsk, opt);
 		RCU_INIT_POINTER(newnp->opt, opt);
