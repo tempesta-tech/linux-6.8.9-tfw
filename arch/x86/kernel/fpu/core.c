@@ -425,19 +425,15 @@ EXPORT_SYMBOL_GPL(fpu_copy_uabi_to_guest_fpstate);
 void kernel_fpu_begin_mask(unsigned int kfpu_mask)
 {
 #ifdef CONFIG_SECURITY_TEMPESTA
-	/* SoftIRQ in the Tempesta kernel always enables FPU. */
-	if (in_serving_softirq() && this_cpu_read(in_kernel_fpu))
-		return;
-
 	/*
 	 * We don't know in which context the function is called, but we know
 	 * preciseely that softirq uses FPU, so we have to disable softirq as
 	 * well as task preemption.
 	 */
-	if (!in_serving_softirq()) {
+	if (!in_serving_softirq())
 		local_bh_disable();
-		preempt_disable();
-	}
+	else if (this_cpu_read(in_kernel_fpu))
+		return;
 #else
 	preempt_disable();
 #endif
@@ -480,9 +476,10 @@ void kernel_fpu_end(void)
 
 	this_cpu_write(in_kernel_fpu, false);
 
-	preempt_enable();
 #ifdef CONFIG_SECURITY_TEMPESTA
 	local_bh_enable();
+#else
+	preempt_enable();
 #endif
 }
 EXPORT_SYMBOL_GPL(kernel_fpu_end);
