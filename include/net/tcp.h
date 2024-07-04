@@ -703,7 +703,6 @@ extern void tcp_adjust_pcount(struct sock *sk, const struct sk_buff *skb,
 extern void tcp_fragment_tstamp(struct sk_buff *skb, struct sk_buff *skb2);
 extern void tcp_skb_fragment_eor(struct sk_buff *skb, struct sk_buff *skb2);
 extern int tcp_close_state(struct sock *sk);
-extern void skb_entail(struct sock *sk, struct sk_buff *skb);
 
 /* Read 'sendfile()'-style from a TCP socket */
 int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,
@@ -2074,11 +2073,51 @@ static inline void tcp_rtx_queue_unlink_and_free(struct sk_buff *skb, struct soc
 	tcp_wmem_free_skb(sk, skb);
 }
 
+#ifdef CONFIG_SECURITY_TEMPESTA
+/**
+ * This function is similar to `tcp_write_err` except that we send
+ * TCP RST to remote peer.  We call this function when an error occurs
+ * while sending data from which we cannot recover, so we close the
+ * connection with TCP RST.
+ */
+static inline void
+tcp_tfw_handle_error(struct sock *sk, int error)
+{
+	tcp_send_active_reset(sk, GFP_ATOMIC);
+	sk->sk_err = error;
+	sk->sk_error_report(sk);
+	tcp_write_queue_purge(sk);
+	tcp_done(sk);
+}
+#endif
+
 static inline void tcp_push_pending_frames(struct sock *sk)
 {
+#ifdef CONFIG_SECURITY_TEMPESTA
+	unsigned int mss_now = 0;
+
+	if (sock_flag(sk, SOCK_TEMPESTA_HAS_DATA)
+	    && sk->sk_fill_write_queue)
+	{
+		int result;
+
+		mss_now = tcp_current_mss(sk);
+		result = sk->sk_fill_write_queue(sk, mss_now, 0);
+		if (unlikely(result < 0 && result != -ENOMEM)) {
+			tcp_tfw_handle_error(sk, result);
+			return;
+		}
+	}
+#endif
 	if (tcp_send_head(sk)) {
 		struct tcp_sock *tp = tcp_sk(sk);
 
+#ifdef CONFIG_SECURITY_TEMPESTA
+		if (mss_now != 0) {
+			int nonagle = TCP_NAGLE_OFF | TCP_NAGLE_PUSH;
+			__tcp_push_pending_frames(sk, mss_now, nonagle);
+		} else
+#endif
 		__tcp_push_pending_frames(sk, tcp_current_mss(sk), tp->nonagle);
 	}
 }

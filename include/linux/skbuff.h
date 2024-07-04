@@ -871,7 +871,6 @@ struct sk_buff {
                                 struct {
                                         __u8    present : 1;
                                         __u8    tls_type : 7;
-                                        __u16   flags : 16;
                                         unsigned int cb;
                                 } tfw_cb;
 #endif
@@ -945,7 +944,7 @@ struct sk_buff {
 	__u8			active_extensions;
 #endif
 #ifdef CONFIG_SECURITY_TEMPESTA
-        __u8                    tail_lock:1;
+	__u8			tail_lock:1;
 #endif
 
 	/* Fields enclosed in headers group are copied
@@ -1150,34 +1149,15 @@ skb_tfw_is_present(struct sk_buff *skb)
 static inline void
 skb_set_tfw_tls_type(struct sk_buff *skb, unsigned char tls_type)
 {
-        BUG_ON(tls_type > 0x7F);
-        skb->tfw_cb.present = 1;
-        skb->tfw_cb.tls_type = tls_type;
+	BUG_ON(tls_type > 0x7F);
+	skb->tfw_cb.present = 1;
+	skb->tfw_cb.tls_type = tls_type;
 }
 
 static inline unsigned char
 skb_tfw_tls_type(struct sk_buff *skb)
 {
 	return skb->tfw_cb.present ? skb->tfw_cb.tls_type : 0;
-}
-
-static inline void
-skb_set_tfw_flags(struct sk_buff *skb, unsigned short flags)
-{
-        skb->tfw_cb.present = 1;
-        skb->tfw_cb.flags |= flags;
-}
-
-static inline void
-skb_clear_tfw_flag(struct sk_buff *skb, unsigned short flag)
-{
-        skb->tfw_cb.flags &= ~flag;
-}
-
-static inline unsigned short
-skb_tfw_flags(struct sk_buff *skb)
-{
-        return skb->tfw_cb.present ? skb->tfw_cb.flags : 0;
 }
 
 static inline void

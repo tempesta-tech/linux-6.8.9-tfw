@@ -514,16 +514,28 @@ struct sock {
 	void			(*sk_data_ready)(struct sock *sk);
 	void			(*sk_write_space)(struct sock *sk);
 #ifdef CONFIG_SECURITY_TEMPESTA
-	int			(*sk_prepare_xmit)(struct sock *sk,
-						   struct sk_buff *skb,
-						   unsigned int mss_now,
-						   unsigned int *limit,
-						   unsigned int *skbs);
+				/*
+				 * Tempesta FW callback to ecrypt one
+				 * or more skb in socket write queue
+				 * before sending.
+				 */
 	int			(*sk_write_xmit)(struct sock *sk,
 						 struct sk_buff *skb,
 						 unsigned int mss_now,
-						 unsigned int limit,
-						 unsigned int skbs);
+						 unsigned int limit);
+				/*
+				 * Tempesta FW callback to prepare and push
+				 * skbs from Tempesta FW private scheduler
+				 * to socket write queue according sender
+				 * and receiver window.
+				 */
+	int			(*sk_fill_write_queue)(struct sock *sk,
+						       unsigned int mss_now,
+						       int ss_action);
+				/*
+				 * Tempesta FW callback to free all private
+				 * resources associated with socket.
+				 */
 	void			(*sk_destroy_cb)(struct sock *sk);
 #endif
 	void			(*sk_error_report)(struct sock *sk);
@@ -945,6 +957,7 @@ enum sock_flags {
 	SOCK_RCVMARK, /* Receive SO_MARK  ancillary data with packet */
 #ifdef CONFIG_SECURITY_TEMPESTA
 	SOCK_TEMPESTA, /* The socket is managed by Tempesta FW */
+	SOCK_TEMPESTA_HAS_DATA /* The socket has data in Tempesta FW write queue */
 #endif
 };
 

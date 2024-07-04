@@ -159,6 +159,9 @@ void tcp_cwnd_restart(struct sock *sk, s32 delta)
 	tp->snd_cwnd_stamp = tcp_jiffies32;
 	tp->snd_cwnd_used = 0;
 }
+#ifdef CONFIG_SECURITY_TEMPESTA
+EXPORT_SYMBOL(tcp_cwnd_restart);
+#endif
 
 /* Congestion state accounting after a packet has been sent. */
 static void tcp_event_data_sent(struct tcp_sock *tp,
@@ -2751,50 +2754,39 @@ void tcp_chrono_stop(struct sock *sk, const enum tcp_chrono type)
 #ifdef CONFIG_SECURITY_TEMPESTA
 
 /**
- * The next two functions are called from places: from `tcp_write_xmit`
+ * The next funtion is called from places: from `tcp_write_xmit`
  * (a usual case) and from `tcp_write_wakeup`. In other places where
  * `tcp_transmit_skb` is called we deal with special TCP skbs or skbs
  * not from tcp send queue.
  */
 static int
-tcp_tfw_sk_prepare_xmit(struct sock *sk, struct sk_buff *skb,
-			unsigned int mss_now, unsigned int *limit,
-			unsigned int *nskbs)
-{
-	if (!sk->sk_prepare_xmit || !skb_tfw_tls_type(skb))
-		return 0;
-
-	if (unlikely(*limit <= TLS_MAX_OVERHEAD)) {
-		net_warn_ratelimited("%s: too small MSS %u"
-				     " for TLS\n",
-				     __func__, mss_now);
-		return -ENOMEM;
-	}
-
-	if (*limit > TLS_MAX_PAYLOAD_SIZE + TLS_MAX_OVERHEAD)
-		*limit = TLS_MAX_PAYLOAD_SIZE;
-	else
-		*limit -= TLS_MAX_OVERHEAD;
-
-	if (unlikely(skb_tfw_flags(skb) & SS_F_HTTP2_FRAME_PREPARED)) {
-		*nskbs = 1;
-		return 0;
-	}
-
-	return sk->sk_prepare_xmit(sk, skb, mss_now, limit, nskbs);
-}
-
-static int
 tcp_tfw_sk_write_xmit(struct sock *sk, struct sk_buff *skb,
-		      unsigned int mss_now, unsigned int limit,
-		      unsigned int nskbs)
+		      unsigned int mss_now)
 {
+	struct tcp_sock *tp = tcp_sk(sk);
+	unsigned int in_flight = tcp_packets_in_flight(tp);
+	unsigned int send_win, cong_win;
+	unsigned int limit;
 	int result;
 
 	if (!sk->sk_write_xmit || !skb_tfw_tls_type(skb))
 		return 0;
 
-	result = sk->sk_write_xmit(sk, skb, mss_now, limit, nskbs);
+	/* Should be checked early. */
+	BUG_ON(after(TCP_SKB_CB(skb)->seq, tcp_wnd_end(tp)));
+	cong_win = (tp->snd_cwnd - in_flight) * mss_now;
+	send_win = tcp_wnd_end(tp) - TCP_SKB_CB(skb)->seq;
+	/*
+	 * A receive side doesn’t start to process a TLS recod until
+	 * it’s fully read from a socket. Too small record size causes
+	 * too much overhead. On the other side too large record size
+	 * can lead to significant delays on receive side if current
+	 * TCP congestion and/or the receiver’s advertised window are
+	 * smaller than a TLS record size.
+	 */
+	limit = min3(cong_win, send_win, (unsigned int)TLS_MAX_PAYLOAD_SIZE);
+
+	result = sk->sk_write_xmit(sk, skb, mss_now, limit);
 	if (unlikely(result))
 		return result;
 
@@ -2803,21 +2795,20 @@ tcp_tfw_sk_write_xmit(struct sock *sk, struct sk_buff *skb,
 	return 0;
 }
 
-/**
- * This function is similar to `tcp_write_err` except that we send
- * TCP RST to remote peer.  We call this function when an error occurs
- * while sending data from which we cannot recover, so we close the
- * connection with TCP RST.
+/*
+ * We should recalculate max_size, and split skb according
+ * new limit, because we add extra TLS_MAX_OVERHEAD bytes
+ * during tls encription. If we don't adjust it, we push
+ * skb with incorrect length to network.
  */
-static void
-tcp_tfw_handle_error(struct sock *sk, int error)
-{
-	tcp_send_active_reset(sk, GFP_ATOMIC);
-	sk->sk_err = error;
-	sk->sk_error_report(sk);
-	tcp_write_queue_purge(sk);
-	tcp_done(sk);
-}
+#define TFW_ADJUST_TLS_OVERHEAD(max_size)			\
+do {								\
+	if (max_size > TLS_MAX_PAYLOAD_SIZE + TLS_MAX_OVERHEAD)	\
+		max_size = TLS_MAX_PAYLOAD_SIZE;		\
+	else							\
+		max_size -= TLS_MAX_OVERHEAD;			\
+} while(0)
+
 #endif
 
 /* This routine writes packets to the network.  It advances the
@@ -2914,13 +2905,14 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 							  max_segs),
 						    nonagle);
 #ifdef CONFIG_SECURITY_TEMPESTA
-		result = tcp_tfw_sk_prepare_xmit(sk, skb, mss_now, &limit,
-						 &nskbs);
-		if (unlikely(result)) {
-			if (result == -ENOMEM)
-				break; /* try again next time */
-			tcp_tfw_handle_error(sk, result);
-			return false;
+		if (sk->sk_write_xmit && skb_tfw_tls_type(skb)) {
+			if (unlikely(limit <= TLS_MAX_OVERHEAD)) {
+			    net_warn_ratelimited("%s: too small MSS %u"
+						 " for TLS\n",
+						 __func__, mss_now);
+				break;
+			}
+			TFW_ADJUST_TLS_OVERHEAD(limit);
 		}
 #endif
 		if (skb->len > limit &&
@@ -2938,7 +2930,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		if (TCP_SKB_CB(skb)->end_seq == TCP_SKB_CB(skb)->seq)
 			break;
 #ifdef CONFIG_SECURITY_TEMPESTA
-		result = tcp_tfw_sk_write_xmit(sk, skb, mss_now, limit, nskbs);
+		result = tcp_tfw_sk_write_xmit(sk, skb, mss_now);
 		if (unlikely(result)) {
 			if (result == -ENOMEM)
 				break; /* try again next time */
@@ -4462,15 +4454,6 @@ int tcp_write_wakeup(struct sock *sk, int mib)
 		if (before(tp->pushed_seq, TCP_SKB_CB(skb)->end_seq))
 			tp->pushed_seq = TCP_SKB_CB(skb)->end_seq;
 
-#ifdef CONFIG_SECURITY_TEMPESTA
-		err = tcp_tfw_sk_prepare_xmit(sk, skb, mss, &seg_size, &nskbs);
-		if (unlikely(err)) {
-			if (err != -ENOMEM)
-				tcp_tfw_handle_error(sk, err);
-			return err;
-		}
-#endif
-
 		/* We are probing the opening of a window
 		 * but the window size is != 0
 		 * must have been a result SWS avoidance ( sender )
@@ -4478,6 +4461,17 @@ int tcp_write_wakeup(struct sock *sk, int mib)
 		if (seg_size < TCP_SKB_CB(skb)->end_seq - TCP_SKB_CB(skb)->seq ||
 		    skb->len > mss) {
 			seg_size = min(seg_size, mss);
+#ifdef CONFIG_SECURITY_TEMPESTA
+			if (sk->sk_write_xmit && skb_tfw_tls_type(skb)) {
+				if (unlikely(seg_size <= TLS_MAX_OVERHEAD)) {
+					net_warn_ratelimited("%s: too small"
+							     " MSS %u for TLS\n",
+							     __func__, mss);
+					return -ENOMEM;
+				}
+				TFW_ADJUST_TLS_OVERHEAD(seg_size);
+			}
+#endif
 			TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_PSH;
 			if (tcp_fragment(sk, TCP_FRAG_IN_WRITE_QUEUE,
 					 skb, seg_size, mss, GFP_ATOMIC))
@@ -4488,7 +4482,7 @@ int tcp_write_wakeup(struct sock *sk, int mib)
 		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_PSH;
 
 #ifdef CONFIG_SECURITY_TEMPESTA
-		err = tcp_tfw_sk_write_xmit(sk, skb, mss, seg_size, nskbs);
+		err = tcp_tfw_sk_write_xmit(sk, skb, mss);
 		if (unlikely(err)) {
 			if (err != -ENOMEM)
 				tcp_tfw_handle_error(sk, err);
