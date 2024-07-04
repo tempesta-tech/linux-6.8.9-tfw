@@ -908,6 +908,37 @@ struct sk_buff *tcp_stream_alloc_skb(struct sock *sk, gfp_t gfp,
 }
 EXPORT_SYMBOL(tcp_stream_alloc_skb);
 
+struct sk_buff *tcp_stream_alloc_skb_size(struct sock *sk, int size, gfp_t gfp,
+				     bool force_schedule)
+{
+	struct sk_buff *skb;
+
+	skb = alloc_skb_fclone(MAX_TCP_HEADER + size, gfp);
+	if (likely(skb)) {
+		bool mem_scheduled;
+
+		skb->truesize = SKB_TRUESIZE(skb_end_offset(skb));
+		if (force_schedule) {
+			mem_scheduled = true;
+			sk_forced_mem_schedule(sk, skb->truesize);
+		} else {
+			mem_scheduled = sk_wmem_schedule(sk, skb->truesize);
+		}
+		if (likely(mem_scheduled)) {
+			skb_reserve(skb, MAX_TCP_HEADER);
+			skb->ip_summed = CHECKSUM_PARTIAL;
+			INIT_LIST_HEAD(&skb->tcp_tsorted_anchor);
+			return skb;
+		}
+		__kfree_skb(skb);
+	} else {
+		sk->sk_prot->enter_memory_pressure(sk);
+		sk_stream_moderate_sndbuf(sk);
+	}
+	return NULL;
+}
+EXPORT_SYMBOL(tcp_stream_alloc_skb_size);
+
 static unsigned int tcp_xmit_size_goal(struct sock *sk, u32 mss_now,
 				       int large_allowed)
 {

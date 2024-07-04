@@ -1633,6 +1633,10 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
 	long limit;
 	int nlen;
 	u8 flags;
+	int nsize = skb_headlen(skb) - len;
+
+	if (nsize < 0)
+		nsize = 0;
 
 	if (WARN_ON(len > skb->len))
 		return -EINVAL;
@@ -1657,7 +1661,7 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
 		return -ENOMEM;
 
 	/* Get a new skb... force flag on. */
-	buff = tcp_stream_alloc_skb(sk, gfp, true);
+	buff = tcp_stream_alloc_skb_size(sk, nsize, gfp, true);
 	if (!buff)
 		return -ENOMEM; /* We'll just try again later. */
 	skb_copy_decrypted(buff, skb);
@@ -1726,7 +1730,13 @@ static int __pskb_trim_head(struct sk_buff *skb, int len)
 	struct skb_shared_info *shinfo;
 	int i, k, eat;
 
-	DEBUG_NET_WARN_ON_ONCE(skb_headlen(skb));
+	eat = min_t(int, len, skb_headlen(skb));
+	if (eat) {
+		__skb_pull(skb, eat);
+		len -= eat;
+		if (!len)
+			return 0;
+	}
 	eat = len;
 	k = 0;
 	shinfo = skb_shinfo(skb);
@@ -2199,6 +2209,9 @@ int tso_fragment(struct sock *sk, struct sk_buff *skb, unsigned int len,
 	int nlen = skb->len - len;
 	struct sk_buff *buff;
 	u8 flags;
+
+	if (skb->len != skb->data_len)
+		return tcp_fragment(sk, TCP_FRAG_IN_WRITE_QUEUE, skb, len, mss_now, gfp);
 
 	/* All of a TSO frame must be composed of paged data.  */
 	DEBUG_NET_WARN_ON_ONCE(skb->len != skb->data_len);
