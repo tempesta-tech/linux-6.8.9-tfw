@@ -529,6 +529,9 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 
 	softirq_handle_begin();
 	in_hardirq = lockdep_softirq_start();
+#ifdef CONFIG_SECURITY_TEMPESTA
+	__kernel_fpu_begin_mask(KFPU_MXCSR);
+#endif
 	account_softirq_enter(current);
 
 restart:
