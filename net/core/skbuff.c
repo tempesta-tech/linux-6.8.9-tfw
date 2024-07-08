@@ -600,46 +600,6 @@ out:
 }
 #endif
 
-#ifdef CONFIG_SECURITY_TEMPESTA
-static void kmalloc_reserve_size(unsigned int *size, gfp_t flags, int node,
-			     bool *pfmemalloc)
-{
-	bool ret_pfmemalloc = false;
-	size_t obj_size;
-
-	obj_size = SKB_HEAD_ALIGN(*size);
-	if (obj_size <= SKB_SMALL_HEAD_CACHE_SIZE &&
-	    !(flags & KMALLOC_NOT_NORMAL_BITS)) {
-		*size = SKB_SMALL_HEAD_CACHE_SIZE;
-		if (!gfp_pfmemalloc_allowed(flags))
-			goto out;
-		/* Try again but now we are using pfmemalloc reserves */
-		ret_pfmemalloc = true;
-		goto out;
-	}
-
-	obj_size = kmalloc_size_roundup(obj_size);
-	/* The following cast might truncate high-order bits of obj_size, this
-	 * is harmless because kmalloc(obj_size >= 2^32) will fail anyway.
-	 */
-	*size = (unsigned int)obj_size;
-
-	/*
-	 * Try a regular allocation, when that fails and we're not entitled
-	 * to the reserves, fail.
-	 */
-	if (!gfp_pfmemalloc_allowed(flags))
-		goto out;
-
-	/* Try again but now we are using pfmemalloc reserves */
-	ret_pfmemalloc = true;
-
-out:
-	if (pfmemalloc)
-		*pfmemalloc = ret_pfmemalloc;
-}
-#endif
-
 /*
  * Chunks of size 128B, 256B, 512B, 1KB and 2KB.
  * Typical sk_buff requires ~272B or ~552B (for fclone),
@@ -848,6 +808,8 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	size_t skb_sz = (flags & SKB_ALLOC_FCLONE)
 			? SKB_DATA_ALIGN(sizeof(struct sk_buff_fclones))
 			: SKB_DATA_ALIGN(sizeof(struct sk_buff));
+	size_t shi_sz = SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+	size_t n = skb_sz + shi_sz + SKB_DATA_ALIGN(size);
 	struct page *pg;
 #endif
 
@@ -860,8 +822,8 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 		gfp_mask |= __GFP_MEMALLOC;
 
 #ifdef CONFIG_SECURITY_TEMPESTA
-	kmalloc_reserve_size(&size, gfp_mask, node, &pfmemalloc);
-	if (!(skb = pg_skb_alloc(skb_sz + size, gfp_mask, node)))
+	size = PG_ALLOC_SZ(n) - skb_sz;
+	if (!(skb = pg_skb_alloc(n, gfp_mask, node)))
 		return NULL;
 	data = (u8 *)skb + skb_sz;
 	pg = virt_to_head_page(data);
@@ -2425,7 +2387,8 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 		gfp_mask |= __GFP_MEMALLOC;
 
 #ifdef CONFIG_SECURITY_TEMPESTA
-	kmalloc_reserve_size(&size, gfp_mask, NUMA_NO_NODE, NULL);
+	size = SKB_DATA_ALIGN(size)
+	       + SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = pg_skb_alloc(size, gfp_mask, NUMA_NO_NODE);
 	if (!data)
 		goto nodata;
@@ -6783,7 +6746,7 @@ static int pskb_carve_inside_header(struct sk_buff *skb, const u32 off,
 		gfp_mask |= __GFP_MEMALLOC;
 
 #ifdef CONFIG_SECURITY_TEMPESTA
-	kmalloc_reserve_size(&size, gfp_mask, NUMA_NO_NODE, NULL);
+	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = pg_skb_alloc(size, gfp_mask, NUMA_NO_NODE);
 	if (!data)
 		return -ENOMEM;
@@ -6915,7 +6878,7 @@ static int pskb_carve_inside_nonlinear(struct sk_buff *skb, const u32 off,
 		gfp_mask |= __GFP_MEMALLOC;
 
 #ifdef CONFIG_SECURITY_TEMPESTA
-	kmalloc_reserve_size(&size, gfp_mask, NUMA_NO_NODE, NULL);
+	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = pg_skb_alloc(size, gfp_mask, NUMA_NO_NODE);
 	if (!data)
 		return -ENOMEM;
