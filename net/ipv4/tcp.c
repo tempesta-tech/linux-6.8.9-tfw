@@ -459,7 +459,9 @@ void tcp_init_sock(struct sock *sk)
 	WRITE_ONCE(sk->sk_rcvbuf, READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[1]));
 	tcp_scaling_ratio_init(sk);
 
+#ifdef CONFIG_SECURITY_TEMPESTA
 	if (sk->sk_socket)
+#endif
 		set_bit(SOCK_SUPPORT_ZC, &sk->sk_socket->flags);
 
 	sk_sockets_allocated_inc(sk);
